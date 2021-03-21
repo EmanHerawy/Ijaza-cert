@@ -1,0 +1,5 @@
+= ERC 722
+
+[.readme-notice]
+
+fork from ERC721 to implement NFT that can't be sold/trade/transferred .Certificates  associated with users e.g university cert , birth certificate. 
