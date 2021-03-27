@@ -3,13 +3,14 @@ pragma solidity >=0.6.0 <0.7.0;
 
 //import "hardhat/console.sol";
 import "./ERC722/ERC722.sol";
+import "./AccessControl.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 //learn more: https://docs.openzeppelin.com/contracts/3.x/erc721
 
 // GET LISTED ON OPENSEA: https://testnets.opensea.io/get-listed/step-two
 
-contract IjazaCert is ERC722, Ownable {
+contract IjazaCert is AccessControl, ERC722, Ownable {
 
   using Counters for Counters.Counter;
   Counters.Counter private _tokenIds;
@@ -66,9 +67,10 @@ Ijaza [] ijazat;
       return id;
   }
 
+//
     function bootstrapIjaza(address to, string memory tokenURI, uint256 qiraa)
       public
-     onlyOwner
+     onlyCLevel()
       returns (uint256)
   {
      
