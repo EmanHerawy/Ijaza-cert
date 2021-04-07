@@ -1,115 +1,217 @@
-pragma solidity >=0.6.0 <=0.7.0;
-/// @title A facet of KittyCore that manages special access privileges.
-/// @author Axiom Zen (https://www.axiomzen.co)
-/// @dev See the KittyCore contract documentation to understand how the various contract facets are arranged.
+// SPDX-License-Identifier: MIT
 
-contract AccessControl {
-    // This facet controls access control for CryptoKitties. There are four roles managed here:
-    //
-    //     - The CEO: The CEO can reassign other roles and change the addresses of our dependent smart
-    //         contracts. It is also the only role that can unpause the smart contract. It is initially
-    //         set to the address that created the smart contract in the KittyCore constructor.
-    //
-    //     - The CFO: The CFO can withdraw funds from KittyCore and its auction contracts.
-    //
-    //     - The COO: The COO can release gen0 kitties to auction, and mint promo cats.
-    //
-    // It should be noted that these roles are distinct without overlap in their access abilities, the
-    // abilities listed for each role above are exhaustive. In particular, while the CEO can assign any
-    // address to any role, the CEO address itself doesn't have the ability to act in those roles. This
-    // restriction is intentional so that we aren't tempted to use the CEO address frequently out of
-    // convenience. The less we use an address, the less likely it is that we somehow compromise the
-    // account.
+pragma solidity >=0.6.0 <0.8.0;
 
-    /// @dev Emited when contract is upgraded - See README.md for updgrade plan
-    event ContractUpgrade(address newContract);
+import "@openzeppelin/contracts/utils/EnumerableSet.sol";
+import "@openzeppelin/contracts/utils/Address.sol";
+import "@openzeppelin/contracts/GSN/Context.sol";
 
-    // The addresses of the accounts (or contracts) that can execute actions within each roles.
-    address public ceoAddress;
-    address public cfoAddress;
-    address public cooAddress;
+/**
+ * @dev Contract module that allows children to implement role-based access
+ * control mechanisms.
+ *
+ * Roles are referred to by their `bytes32` identifier. These should be exposed
+ * in the external API and be unique. The best way to achieve this is by
+ * using `public constant` hash digests:
+ *
+ * ```
+ * bytes32 public constant MY_ROLE = keccak256("MY_ROLE");
+ * ```
+ *
+ * Roles can be used to represent a set of permissions. To restrict access to a
+ * function call, use {hasRole}:
+ *
+ * ```
+ * function foo() public {
+ *     require(hasRole(MY_ROLE, msg.sender));
+ *     ...
+ * }
+ * ```
+ *
+ * Roles can be granted and revoked dynamically via the {grantRole} and
+ * {revokeRole} functions. Each role has an associated admin role, and only
+ * accounts that have a role's admin role can call {grantRole} and {revokeRole}.
+ *
+ * By default, the admin role for all roles is `DEFAULT_ADMIN_ROLE`, which means
+ * that only accounts with this role will be able to grant or revoke other
+ * roles. More complex role relationships can be created by using
+ * {_setRoleAdmin}.
+ *
+ * WARNING: The `DEFAULT_ADMIN_ROLE` is also its own admin: it has permission to
+ * grant and revoke this role. Extra precautions should be taken to secure
+ * accounts that have been granted it.
+ */
+abstract contract AccessControl is Context {
+    using EnumerableSet for EnumerableSet.AddressSet;
+    using Address for address;
 
-    // @dev Keeps track whether the contract is paused. When that is true, most actions are blocked
-    bool public paused = false;
-
-    /// @dev Access modifier for CEO-only functionality
-    modifier onlyCEO() {
-        require(msg.sender == ceoAddress);
-        _;
+    struct RoleData {
+        EnumerableSet.AddressSet members;
+        bytes32 adminRole;
     }
 
-    /// @dev Access modifier for CFO-only functionality
-    modifier onlyCFO() {
-        require(msg.sender == cfoAddress);
-        _;
+    mapping (bytes32 => RoleData) private _roles;
+
+    bytes32 public constant DEFAULT_ADMIN_ROLE = 0x00;
+
+    /**
+     * @dev Emitted when `newAdminRole` is set as ``role``'s admin role, replacing `previousAdminRole`
+     *
+     * `DEFAULT_ADMIN_ROLE` is the starting admin for all roles, despite
+     * {RoleAdminChanged} not being emitted signaling this.
+     *
+     * _Available since v3.1._
+     */
+    event RoleAdminChanged(bytes32 indexed role, bytes32 indexed previousAdminRole, bytes32 indexed newAdminRole);
+
+    /**
+     * @dev Emitted when `account` is granted `role`.
+     *
+     * `sender` is the account that originated the contract call, an admin role
+     * bearer except when using {_setupRole}.
+     */
+    event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender);
+
+    /**
+     * @dev Emitted when `account` is revoked `role`.
+     *
+     * `sender` is the account that originated the contract call:
+     *   - if using `revokeRole`, it is the admin role bearer
+     *   - if using `renounceRole`, it is the role bearer (i.e. `account`)
+     */
+    event RoleRevoked(bytes32 indexed role, address indexed account, address indexed sender);
+
+    /**
+     * @dev Returns `true` if `account` has been granted `role`.
+     */
+    function hasRole(bytes32 role, address account) public view returns (bool) {
+        return _roles[role].members.contains(account);
     }
 
-    /// @dev Access modifier for COO-only functionality
-    modifier onlyCOO() {
-        require(msg.sender == cooAddress);
-        _;
+    /**
+     * @dev Returns the number of accounts that have `role`. Can be used
+     * together with {getRoleMember} to enumerate all bearers of a role.
+     */
+    function getRoleMemberCount(bytes32 role) public view returns (uint256) {
+        return _roles[role].members.length();
     }
 
-    modifier onlyCLevel() {
-        require(
-            msg.sender == cooAddress ||
-            msg.sender == ceoAddress ||
-            msg.sender == cfoAddress
-        );
-        _;
+    /**
+     * @dev Returns one of the accounts that have `role`. `index` must be a
+     * value between 0 and {getRoleMemberCount}, non-inclusive.
+     *
+     * Role bearers are not sorted in any particular way, and their ordering may
+     * change at any point.
+     *
+     * WARNING: When using {getRoleMember} and {getRoleMemberCount}, make sure
+     * you perform all queries on the same block. See the following
+     * https://forum.openzeppelin.com/t/iterating-over-elements-on-enumerableset-in-openzeppelin-contracts/2296[forum post]
+     * for more information.
+     */
+    function getRoleMember(bytes32 role, uint256 index) public view returns (address) {
+        return _roles[role].members.at(index);
     }
 
-    /// @dev Assigns a new address to act as the CEO. Only available to the current CEO.
-    /// @param _newCEO The address of the new CEO
-    function setCEO(address _newCEO) external onlyCEO {
-        require(_newCEO != address(0));
-
-        ceoAddress = _newCEO;
+    /**
+     * @dev Returns the admin role that controls `role`. See {grantRole} and
+     * {revokeRole}.
+     *
+     * To change a role's admin, use {_setRoleAdmin}.
+     */
+    function getRoleAdmin(bytes32 role) public view returns (bytes32) {
+        return _roles[role].adminRole;
     }
 
-    /// @dev Assigns a new address to act as the CFO. Only available to the current CEO.
-    /// @param _newCFO The address of the new CFO
-    function setCFO(address _newCFO) external onlyCEO {
-        require(_newCFO != address(0));
+    /**
+     * @dev Grants `role` to `account`.
+     *
+     * If `account` had not been already granted `role`, emits a {RoleGranted}
+     * event.
+     *
+     * Requirements:
+     *
+     * - the caller must have ``role``'s admin role.
+     */
+    function grantRole(bytes32 role, address account) external virtual {
+        require(hasRole(_roles[role].adminRole, _msgSender()), "AccessControl: sender must be an admin to grant");
 
-        cfoAddress = _newCFO;
+        _grantRole(role, account);
     }
 
-    /// @dev Assigns a new address to act as the COO. Only available to the current CEO.
-    /// @param _newCOO The address of the new COO
-    function setCOO(address _newCOO) external onlyCEO {
-        require(_newCOO != address(0));
+    /**
+     * @dev Revokes `role` from `account`.
+     *
+     * If `account` had been granted `role`, emits a {RoleRevoked} event.
+     *
+     * Requirements:
+     *
+     * - the caller must have ``role``'s admin role.
+     */
+    function revokeRole(bytes32 role, address account) public virtual {
+        require(hasRole(_roles[role].adminRole, _msgSender()), "AccessControl: sender must be an admin to revoke");
 
-        cooAddress = _newCOO;
+        _revokeRole(role, account);
     }
 
-    /*** Pausable functionality adapted from OpenZeppelin ***/
+    /**
+     * @dev Revokes `role` from the calling account.
+     *
+     * Roles are often managed via {grantRole} and {revokeRole}: this function's
+     * purpose is to provide a mechanism for accounts to lose their privileges
+     * if they are compromised (such as when a trusted device is misplaced).
+     *
+     * If the calling account had been granted `role`, emits a {RoleRevoked}
+     * event.
+     *
+     * Requirements:
+     *
+     * - the caller must be `account`.
+     */
+    function renounceRole(bytes32 role, address account) public virtual {
+        require(account == _msgSender(), "AccessControl: can only renounce roles for self");
 
-    /// @dev Modifier to allow actions only when the contract IS NOT paused
-    modifier whenNotPaused() {
-        require(!paused);
-        _;
+        _revokeRole(role, account);
     }
 
-    /// @dev Modifier to allow actions only when the contract IS paused
-    modifier whenPaused {
-        require(paused);
-        _;
+    /**
+     * @dev Grants `role` to `account`.
+     *
+     * If `account` had not been already granted `role`, emits a {RoleGranted}
+     * event. Note that unlike {grantRole}, this function doesn't perform any
+     * checks on the calling account.
+     *
+     * [WARNING]
+     * ====
+     * This function should only be called from the constructor when setting
+     * up the initial roles for the system.
+     *
+     * Using this function in any other way is effectively circumventing the admin
+     * system imposed by {AccessControl}.
+     * ====
+     */
+    function _setupRole(bytes32 role, address account) internal virtual {
+        _grantRole(role, account);
     }
 
-    /// @dev Called by any "C-level" role to pause the contract. Used only when
-    ///  a bug or exploit is detected and we need to limit damage.
-    function pause() external onlyCLevel whenNotPaused {
-        paused = true;
+    /**
+     * @dev Sets `adminRole` as ``role``'s admin role.
+     *
+     * Emits a {RoleAdminChanged} event.
+     */
+    function _setRoleAdmin(bytes32 role, bytes32 adminRole) internal virtual {
+        emit RoleAdminChanged(role, _roles[role].adminRole, adminRole);
+        _roles[role].adminRole = adminRole;
     }
 
-    /// @dev Unpauses the smart contract. Can only be called by the CEO, since
-    ///  one reason we may pause the contract is when CFO or COO accounts are
-    ///  compromised.
-    /// @notice This is public rather than external so it can be called by
-    ///  derived contracts.
-    function unpause() public onlyCEO whenPaused {
-        // can't unpause if contract was upgraded
-        paused = false;
+    function _grantRole(bytes32 role, address account) private {
+        if (_roles[role].members.add(account)) {
+            emit RoleGranted(role, account, _msgSender());
+        }
+    }
+
+    function _revokeRole(bytes32 role, address account) private {
+        if (_roles[role].members.remove(account)) {
+            emit RoleRevoked(role, account, _msgSender());
+        }
     }
 }

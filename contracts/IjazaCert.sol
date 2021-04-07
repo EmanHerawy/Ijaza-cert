@@ -4,6 +4,7 @@ pragma solidity >=0.6.0 <0.7.0;
 //import "hardhat/console.sol";
 import "./ERC722/ERC722.sol";
 import "./AccessControl.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
@@ -13,32 +14,40 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract IjazaCert is AccessControl, ERC722, Ownable {
     using Counters for Counters.Counter;
+    using SafeMath for uint256;
     Counters.Counter private _IjazaID;
+       bytes32 public constant ISSUER_ROLE = keccak256("ISSUER_ROLE");
 
+    modifier onlyCLevel() {
+        require(hasRole(DEFAULT_ADMIN_ROLE, _msgSender())|| hasRole(ISSUER_ROLE, _msgSender()), "Caller is not an admin nore issuer");
+        _;
+    }
     constructor() public ERC722("Ijazat qiraat", "IQC") {
         _setBaseURI("https://ipfs.io/ipfs/"); // todo change url
+      _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+
     }
     
-    event IssueIjazaEvent(address indexed to, address indexed parentCertId, uint256 indexed id);
+    event IssueIjazaEvent(address indexed to, uint256 indexed parentCertId, uint256 indexed id);
 
     // we only have 10 Quaraat
     // forked from crypto_ijazates
     struct Ijaza {
         uint256 qiraa;
         // The timestamp from the block when this is created.
-        uint64 issueTime;
+        uint256 issueTime;
         // The ID of the parents of this cert, set to 0 for genesis cert.
         // Note that using 32-bit unsigned integers limits us to a "mere"
         // 4 billion certificate. This number might seem small until you realize
         // that Ethereum currently has a limit of about 500 million
         // transactions per year! So, this definitely won't be a problem
         // for several years (even as Ethereum learns to scale).
-        uint32 parentCertId;
+        uint256 parentCertId;
         // The "generation number" of this cert. certifcated minted by the CK contract
         // for sale are called "gen0" and have a generation number of 0. The
         // generation number of all other certificate is the larger of its parent, plus one.
         // (i.e. max(matron.generation, sire.generation) + 1)
-        uint16 generation;
+        uint256 generation;
     }
     Ijaza[] ijazat;
 
@@ -48,7 +57,7 @@ contract IjazaCert is AccessControl, ERC722, Ownable {
         string memory tokenURI,
         uint256 parentCertId
     ) public returns (uint256) {
-        Ijaza memory _issuerIjaza = ijazat[parentCertId];
+         Ijaza memory _issuerIjaza = ijazat[parentCertId];
         require(
             _isOwner(msg.sender, parentCertId),
             "issuer must have an Ijaza first"
@@ -57,19 +66,16 @@ contract IjazaCert is AccessControl, ERC722, Ownable {
         Ijaza memory _ijaza =
             Ijaza({
                 qiraa: _issuerIjaza.qiraa,
-                issueTime: uint64(now),
-                parentCertId: uint32(parentCertId),
-                generation: uint16(_issuerIjaza.generation + 1)
+                issueTime: now,
+                parentCertId: parentCertId,
+                generation: _issuerIjaza.generation.add(1)
             });
         ijazat.push(_ijaza);
         uint256 id = _IjazaID.current();
         _mint(to, id);
         _setTokenURI(id, tokenURI);
         _IjazaID.increment();
-
-        if(parentCertId != 0){
-          emit IssueIjazaEvent(to, parentCertId,  id);
-        }
+       emit IssueIjazaEvent(to, parentCertId,  id);
         
         return id;
     }
@@ -84,9 +90,9 @@ contract IjazaCert is AccessControl, ERC722, Ownable {
         Ijaza memory _ijaza =
             Ijaza({
                 qiraa: qiraa,
-                issueTime: uint64(now),
-                parentCertId: uint32(0),
-                generation: uint16(0)
+                issueTime: now,
+                parentCertId: 0,
+                generation: 0
             });
         ijazat.push(_ijaza);
         uint256 id = _IjazaID.current();
@@ -109,9 +115,9 @@ contract IjazaCert is AccessControl, ERC722, Ownable {
         )
     {
         Ijaza storage _ijaza = ijazat[_id];
-        issueTime = uint256(_ijaza.issueTime);
-        parentCertId = uint256(_ijaza.parentCertId);
-        generation = uint256(_ijaza.generation);
+        issueTime = _ijaza.issueTime;
+        parentCertId = _ijaza.parentCertId;
+        generation = _ijaza.generation;
         qiraa = _ijaza.qiraa;
     }
 }
